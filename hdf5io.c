@@ -114,7 +114,7 @@ int hdf5io_write_event(struct hdf5io_waveform_file *wavFile,
 {
     char buf[HDF5IO_NAME_BUF_SIZE];
     herr_t ret;
-    hid_t eventGid, chSid, chDid, chPid;
+    hid_t eventGid, chSid, chTid, chDid, chPid;
     hsize_t chDims[1], chChunkDims[1];
     
     int ich;
@@ -132,12 +132,15 @@ int hdf5io_write_event(struct hdf5io_waveform_file *wavFile,
             H5Pset_chunk(chPid, 1, chChunkDims);
             H5Pset_deflate(chPid, 6);
 
+            chTid = H5Tcopy(H5T_NATIVE_CHAR);
+
             snprintf(buf, HDF5IO_NAME_BUF_SIZE, "Ch%d", ich);
-            chDid = H5Dcreate(eventGid, buf, H5T_NATIVE_CHAR, chSid,
+            chDid = H5Dcreate(eventGid, buf, chTid, chSid,
                               H5P_DEFAULT, chPid, H5P_DEFAULT);
             ret = H5Dwrite(chDid, H5T_NATIVE_CHAR, H5S_ALL, H5S_ALL, H5P_DEFAULT,
                            wavEvent->wavBuf[ich]);
             H5Dclose(chDid);
+            H5Tclose(chTid);
             H5Pclose(chPid);
             H5Sclose(chSid);
         }
