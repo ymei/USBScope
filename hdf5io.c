@@ -42,7 +42,7 @@ int hdf5io_write_waveform_attribute_in_file_header(struct hdf5io_waveform_file *
     herr_t ret;
     
     hid_t wavAttrTid, wavAttrSid, wavAttrAid, doubleArrayTid, rootGid;
-    const hsize_t doubleArrayDims[1]={TDS2024B_N_CH};
+    const hsize_t doubleArrayDims[1]={SCOPE_NCH};
     const unsigned doubleArrayRank = 1;
 
     doubleArrayTid = H5Tarray_create(H5T_NATIVE_DOUBLE, doubleArrayRank, doubleArrayDims);
@@ -82,7 +82,7 @@ int hdf5io_read_waveform_attribute_in_file_header(struct hdf5io_waveform_file *w
     herr_t ret;
 
     hid_t wavAttrTid, wavAttrAid, doubleArrayTid;
-    const hsize_t doubleArrayDims[1]={TDS2024B_N_CH};
+    const hsize_t doubleArrayDims[1]={SCOPE_NCH};
     const unsigned doubleArrayRank = 1;
 
     doubleArrayTid = H5Tarray_create(H5T_NATIVE_DOUBLE, doubleArrayRank, doubleArrayDims);

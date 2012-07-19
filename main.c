@@ -11,7 +11,7 @@
 #include "waveform.h"
 #include "hdf5io.h"
 
-char waveformBuf[TDS2024B_N_CH][TDS2024B_MEM_LENGTH+1];
+char waveformBuf[SCOPE_NCH][TDS2024B_MEM_LENGTH+1];
 struct hdf5io_waveform_file *waveformFile;
 struct usbtmc_device_handle *usbtmcDev;
 
@@ -52,7 +52,7 @@ int tds2024b_get_wavform_attr(struct usbtmc_device_handle *usbtmcDev,
     wavAttr->t0 = atof(p);
 //    printf("%s %g\n", readBuf, wavAttr->t0);
 
-    for(ich=0; ich<TDS2024B_N_CH; ich++) {
+    for(ich=0; ich<SCOPE_NCH; ich++) {
         sprintf(cmdBuf, "DATA:SOURCE CH%d", ich+1);
         usbtmc_write(usbtmcDev, cmdBuf);
 
@@ -110,7 +110,7 @@ int tds2024b_acquire_and_read(struct usbtmc_device_handle *usbtmcDev,
 
     usbtmc_write(usbtmcDev, "ACQUIRE:STATE RUN");
 
-    for(ich=0; ich<TDS2024B_N_CH; ich++) {
+    for(ich=0; ich<SCOPE_NCH; ich++) {
         if((chMask >> ich) & 0x01) {
             sprintf(cmdBuf, "DATA:SOURCE CH%d", ich+1);
             usbtmc_write(usbtmcDev, cmdBuf);
@@ -210,14 +210,14 @@ int main(int argc, char **argv)
         waveformEvent.eventId = i;
         waveformEvent.wavBuf = waveformBuf;
         waveformEvent.waveSize = retWavLen;
-        waveformEvent.nch = TDS2024B_N_CH;
+        waveformEvent.nch = SCOPE_NCH;
         waveformEvent.chMask = chMask;
 
         hdf5io_write_event(waveformFile, &waveformEvent);
         hdf5io_flush_file(waveformFile);
 /*
         for(i=0; i<retWavLen; i++) {
-            for(ich=0; ich<TDS2024B_N_CH; ich++)
+            for(ich=0; ich<SCOPE_NCH; ich++)
                 fprintf(fp, "  %4d", waveformBuf[ich][i]);
             fprintf(fp, "\n");
         }

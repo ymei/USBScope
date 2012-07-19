@@ -3,6 +3,10 @@ CFLAGS=-Wall
 INCLUDE=-I/opt/local/include
 LIBS=-L/opt/local/lib -lusb-1.0 -lhdf5
 
+.PHONY: all clean
+all: tds2024b
+dpo5054: main2.c usbtmc.o hdf5io.o
+	$(CC) $(CFLAGS) $(INCLUDE) $^ $(LIBS) $(LDFLAGS) -o $@
 dpo2024: main1.c usbtmc.o hdf5io.o
 	$(CC) $(CFLAGS) $(INCLUDE) $^ $(LIBS) $(LDFLAGS) -o $@
 tds2024b: main.c usbtmc.o hdf5io.o
@@ -19,3 +23,5 @@ usbtmc.o: usbtmc.c usbtmc.h
 	$(CC) $(CFLAGS) $(INCLUDE) -c $<
 usbtmc: usbtmc.c usbtmc.h
 	$(CC) $(CFLAGS) $(INCLUDE) -DUSBTMC_DEBUG_ENABLEMAIN $< $(LIBS) $(LDFLAGS) -o $@
+clean:
+	rm -f *.o

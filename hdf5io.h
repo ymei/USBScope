@@ -14,7 +14,7 @@ struct hdf5io_waveform_file
 struct hdf5io_waveform_event
 {
     int eventId;
-    char (*wavBuf)[TDS2024B_MEM_LENGTH+1];
+    char (*wavBuf)[SCOPE_MEM_LENGTH+1];
     int waveSize;
     int nch;
     unsigned int chMask;
