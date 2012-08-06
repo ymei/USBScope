@@ -334,6 +334,33 @@ int main(int argc, char **argv)
 {
     struct usbtmc_device_handle *usbtmcDev;
 
+    char buf[3000] = {0};
+    int i,j,k, retDataSize;
+    FILE *fp;
+
+    if((fp=fopen("log.dat", "w"))==NULL) {
+        perror("log.dat");
+    }
+
+    usbtmcDev = usbtmc_open_device(0x0699, 0x036a); //Tektronix TDS2024B
+//    usbtmcDev = open_usbtmc_device(0x0403, 0x6001);
+
+    usbtmc_clear(usbtmcDev);
+    while(buf[0]!='q') {
+        fgets(buf, sizeof(buf), stdin);
+        usbtmc_write(usbtmcDev, buf);
+        usbtmc_read(usbtmcDev, NULL, sizeof(buf));
+        puts(buf);
+        fputs(buf, fp);
+    }
+
+    usbtmc_close_device(usbtmcDev);
+    fclose(fp);
+    return EXIT_SUCCESS;
+
+#if 0
+    struct usbtmc_device_handle *usbtmcDev;
+
     char wav[3000];
     int i,j,k, retDataSize;
     FILE *fp;
@@ -389,5 +416,6 @@ int main(int argc, char **argv)
     usbtmc_close_device(usbtmcDev);
     fclose(fp);
     return EXIT_SUCCESS;
+#endif
 }
 #endif

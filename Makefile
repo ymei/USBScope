@@ -1,5 +1,5 @@
-CC=gcc
-CFLAGS=-Wall
+CC=clang
+CFLAGS=-Wall -O2
 INCLUDE=-I/opt/local/include
 LIBS=-L/opt/local/lib -lusb-1.0 -lhdf5
 

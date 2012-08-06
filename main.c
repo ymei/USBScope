@@ -11,7 +11,20 @@
 #include "waveform.h"
 #include "hdf5io.h"
 
-char waveformBuf[SCOPE_NCH][TDS2024B_MEM_LENGTH+1];
+#ifdef DEBUG
+  #define debug_printf(fmt, ...) do { fprintf(stderr, fmt, ##__VA_ARGS__); fflush(stderr); \
+                                    } while (0)
+#else
+  #define debug_printf(...) ((void)0)
+#endif
+#define error_printf(fmt, ...) do { fprintf(stderr, fmt, ##__VA_ARGS__); fflush(stderr); \
+                                  } while(0)
+
+static unsigned int chMask;
+static size_t nCh;
+static size_t nEvents;
+
+static char *wavBuf;
 struct hdf5io_waveform_file *waveformFile;
 struct usbtmc_device_handle *usbtmcDev;
 
@@ -19,7 +32,8 @@ void atexit_flush_files(void)
 {
     hdf5io_flush_file(waveformFile);
     hdf5io_close_file(waveformFile);
-//    usbtmc_close_device(usbtmcDev);
+    /* this one seems to generate libusb error (transfer was still being processed) */
+    // usbtmc_close_device(usbtmcDev);
 }
 
 void signal_kill_handler(int sig)
@@ -28,7 +42,7 @@ void signal_kill_handler(int sig)
     fflush(stdout);
     
     fprintf(stderr, "Killed, cleaning up...\n");
-    atexit(atexit_flush_files);
+    atexit_flush_files();
     exit(EXIT_SUCCESS);
 }
 
@@ -37,6 +51,10 @@ int tds2024b_get_wavform_attr(struct usbtmc_device_handle *usbtmcDev,
 {
     int ret, ich;
     char cmdBuf[256], readBuf[256], *p;
+
+    wavAttr->nFrames = 0;
+    wavAttr->nPt = TDS2024B_MEM_LENGTH;
+    wavAttr->chMask = chMask;
 
     usbtmc_write(usbtmcDev, "WFMPRE:XINCR?");
     ret = usbtmc_read(usbtmcDev, (unsigned char*)readBuf, 256);
@@ -79,12 +97,16 @@ int tds2024b_get_wavform_attr(struct usbtmc_device_handle *usbtmcDev,
     }
     
     printf("%s:\n"
-           "     dt    = %g\n"
-           "     t0    = %g\n"
-           "     ymult = %g %g %g %g\n"
-           "     yoff  = %g %g %g %g\n"
-           "     yzero = %g %g %g %g\n",
+           "     chMask  = 0x%02x\n"
+           "     nPt     = %zd\n"
+           "     nFrames = %zd\n"
+           "     dt      = %g\n"
+           "     t0      = %g\n"
+           "     ymult   = %g %g %g %g\n"
+           "     yoff    = %g %g %g %g\n"
+           "     yzero   = %g %g %g %g\n",
            __FUNCTION__,
+           wavAttr->chMask, wavAttr->nPt, wavAttr->nFrames,
            wavAttr->dt, wavAttr->t0,
            wavAttr->ymult[0], wavAttr->ymult[1], wavAttr->ymult[2], wavAttr->ymult[3],
            wavAttr->yoff[0], wavAttr->yoff[1], wavAttr->yoff[2], wavAttr->yoff[3],
@@ -95,11 +117,12 @@ int tds2024b_get_wavform_attr(struct usbtmc_device_handle *usbtmcDev,
 }
 
 int tds2024b_acquire_and_read(struct usbtmc_device_handle *usbtmcDev,
-                              int start, int stop, unsigned int chMask)
+                              struct waveform_attribute *wavAttr,
+                              int start, int stop)
 {
     int ret, wavLen, retWavLen, i, j, digits;
-    unsigned int ich;
-    char cmdBuf[256], wavBuf[TDS2024B_MEM_LENGTH];
+    size_t ich, ichBuf;
+    char cmdBuf[256], buf[TDS2024B_READ_ASK_SIZE];
 
     wavLen = stop-start;
 
@@ -110,18 +133,19 @@ int tds2024b_acquire_and_read(struct usbtmc_device_handle *usbtmcDev,
 
     usbtmc_write(usbtmcDev, "ACQUIRE:STATE RUN");
 
+    ichBuf = 0;
     for(ich=0; ich<SCOPE_NCH; ich++) {
         if((chMask >> ich) & 0x01) {
-            sprintf(cmdBuf, "DATA:SOURCE CH%d", ich+1);
+            sprintf(cmdBuf, "DATA:SOURCE CH%zd", ich+1);
             usbtmc_write(usbtmcDev, cmdBuf);
             usbtmc_write(usbtmcDev, "CURVE?");
 
-            ret = usbtmc_read(usbtmcDev, (unsigned char*)wavBuf, TDS2024B_READ_ASK_SIZE);
-            cmdBuf[0] = wavBuf[8];
+            ret = usbtmc_read(usbtmcDev, (unsigned char*)buf, TDS2024B_READ_ASK_SIZE);
+            cmdBuf[0] = buf[8];
             cmdBuf[1] = '\0';
             digits = atoi(cmdBuf);
             for(i=0; i<digits; i++)
-                cmdBuf[i] = wavBuf[i+9];
+                cmdBuf[i] = buf[i+9];
             cmdBuf[i] = '\0';
             retWavLen = atoi(cmdBuf);
             if(wavLen != retWavLen) {
@@ -129,17 +153,18 @@ int tds2024b_acquire_and_read(struct usbtmc_device_handle *usbtmcDev,
                         retWavLen, wavLen);
             }
             for(j=0; j<ret-9-digits; j++) {
-                waveformBuf[ich][j] = wavBuf[j+9+digits];
+                wavBuf[ichBuf * wavAttr->nPt + j] = buf[j+9+digits];
                 retWavLen--;
             }
             while(retWavLen > 0) {
-                ret = usbtmc_read(usbtmcDev, (unsigned char*)wavBuf, TDS2024B_READ_ASK_SIZE);
+                ret = usbtmc_read(usbtmcDev, (unsigned char*)buf, TDS2024B_READ_ASK_SIZE);
                 for(i=0; i<ret; i++) {
-                    waveformBuf[ich][j] = wavBuf[i];
+                    wavBuf[ichBuf * wavAttr->nPt + j] = buf[i];
                     j++;
                     retWavLen--;
                 }
             }
+            ichBuf++;
         }
     }
     return wavLen;
@@ -153,23 +178,32 @@ int main(int argc, char **argv)
     struct hdf5io_waveform_event waveformEvent;
 
     int i, retWavLen;
-    int nEvents, chMask;
     char *p, *outFileName;
+    unsigned int v, c;
+    size_t nWfmPerChunk = 100;
+    size_t wavBufN;
 
     if(argc<4) {
-        fprintf(stderr, "%s outFileName nEvents chMask(0x..)\n", argv[0]);
+        fprintf(stderr, "%s outFileName chMask(0x..) nEvents nWfmPerChunk\n", argv[0]);
         return EXIT_FAILURE;
     }
     outFileName = argv[1];
-    nEvents = atoi(argv[2]);
+    nEvents = atoi(argv[3]);
 
     errno = 0;
-    chMask = strtol(argv[3], &p, 16);
-    if(errno != 0 || *p != 0 || p == argv[3] || chMask <= 0 ) {
+    chMask = strtol(argv[2], &p, 16);
+    v = chMask;
+    for(c=0; v; c++) v &= v - 1; /* Brian Kernighan's way of counting bits */
+    nCh = c;
+    if(errno != 0 || *p != 0 || p == argv[2] || chMask <= 0 || nCh>SCOPE_NCH) {
         fprintf(stderr, "Invalid chMask input: %s\n", argv[3]);
         return EXIT_FAILURE;
     }
-    
+    if(argc>=5)
+        nWfmPerChunk = atol(argv[4]);
+
+    debug_printf("outFileName: %s, chMask: 0x%02x, nCh: %zd, nEvents: %zd, nWfmPerChunk: %zd\n",
+                 outFileName, chMask, nCh, nEvents, nWfmPerChunk);
 /*
     FILE *fp;
     if((fp=fopen("wav.dat", "w"))==NULL) {
@@ -192,7 +226,10 @@ int main(int argc, char **argv)
 
     tds2024b_get_wavform_attr(usbtmcDev, &waveformAttr);
 
-    waveformFile = hdf5io_open_file(outFileName);
+    wavBufN = waveformAttr.nPt * nCh;
+    wavBuf = (char*)malloc(wavBufN * sizeof(char));
+
+    waveformFile = hdf5io_open_file(outFileName, nWfmPerChunk, nCh);
     hdf5io_write_waveform_attribute_in_file_header(waveformFile, &waveformAttr);
 
     signal(SIGKILL, signal_kill_handler);
@@ -206,12 +243,10 @@ int main(int argc, char **argv)
             printf("\rEvent %d", i);
             fflush(stdout);
         }
-        retWavLen = tds2024b_acquire_and_read(usbtmcDev, 0, TDS2024B_MEM_LENGTH, chMask);
+        retWavLen = tds2024b_acquire_and_read(usbtmcDev, &waveformAttr,
+                                              0, TDS2024B_MEM_LENGTH);
         waveformEvent.eventId = i;
-        waveformEvent.wavBuf = waveformBuf;
-        waveformEvent.waveSize = retWavLen;
-        waveformEvent.nch = SCOPE_NCH;
-        waveformEvent.chMask = chMask;
+        waveformEvent.wavBuf = wavBuf;
 
         hdf5io_write_event(waveformFile, &waveformEvent);
         hdf5io_flush_file(waveformFile);
@@ -226,7 +261,10 @@ int main(int argc, char **argv)
     }
 
     printf("\nstop time  = %zd\n", time(NULL));
+    usbtmc_write(usbtmcDev, "ACQUIRE:STOPAFTER RUNSTOP");
+    usbtmc_write(usbtmcDev, "ACQUIRE:STATE RUN");
 
+    free(wavBuf);
     hdf5io_close_file(waveformFile);    
     usbtmc_close_device(usbtmcDev);
 //    fclose(fp);

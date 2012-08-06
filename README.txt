@@ -13,6 +13,14 @@ Do whatever you want with the code.
 Yuan Mei
 
 ###############################################################################
+RANDOM NOTES
+
+TDS2024B doesn't allow transferring multiple channels at once,
+therefore, after each trigger, the acq has to be stopped to allow data
+transfer of all channels to complete.
+
+Don't forget to turn on all the channels before starting the program.
+
 Note on HDF5 when storing events:
 
 HDF5 file seems to carry a significant overhead when a lot of
